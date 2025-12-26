@@ -49,6 +49,7 @@ class ESPExample
     @created_webhook_id = nil
     @created_domain_id = nil
     @created_ip_pool_id = nil
+    @created_ip_pool_name = nil
     @sent_message_id = nil
   end
   
@@ -341,6 +342,12 @@ class ESPExample
         'X-Email-Type' => 'transactional'
       }
       
+      # Use IP pool if available
+      if @created_ip_pool_name
+        email_message.ippool = @created_ip_pool_name
+        puts "  Using IP Pool: #{@created_ip_pool_name}"
+      end
+      
       puts 'Sending transactional email...'
       puts "  From: #{TEST_FROM_EMAIL}"
       puts "  To: #{TEST_TO_EMAIL}"
@@ -410,6 +417,12 @@ class ESPExample
         'X-Email-Type' => 'marketing',
         'X-Campaign-ID' => 'campaign-001'
       }
+      
+      # Use IP pool if available
+      if @created_ip_pool_name
+        email_message.ippool = @created_ip_pool_name
+        puts "  Using IP Pool: #{@created_ip_pool_name}"
+      end
       
       puts 'Sending marketing email...'
       puts "  From: #{TEST_FROM_EMAIL}"
@@ -525,8 +538,8 @@ class ESPExample
       
       stats.each do |stat|
         puts "\n  Date: #{stat.date}"
-        if stat.stats
-          stat_data = stat.stats
+        if stat.stat
+          stat_data = stat.stat
           puts "    Processed: #{stat_data.processed || 0}"
           puts "    Delivered: #{stat_data.delivered || 0}"
           puts "    Dropped: #{stat_data.dropped || 0}"
@@ -651,7 +664,7 @@ class ESPExample
       
       # Create IP pool request
       pool_request = Sendpost::IPPoolCreateRequest.new
-      pool_request.name = "Marketing Pool - #{Time.now.to_i}"
+      pool_request.name = "Marketing Pool #{Time.now.to_i}"
       pool_request.routing_strategy = 0  # 0 = RoundRobin, 1 = EmailProviderStrategy
       
       # Add IPs to the pool (convert IP to EIP)
@@ -664,12 +677,20 @@ class ESPExample
       end
       pool_request.ips = pool_ips
       
+      # Set warmup interval (required, must be > 0)
+      pool_request.warmup_interval = 24  # 24 hours
+      
+      # Set overflow strategy (0 = None, 1 = Use overflow pool)
+      pool_request.overflow_strategy = 0
+      
       puts "Creating IP pool: #{pool_request.name}"
       puts '  Routing Strategy: Round Robin'
       puts "  IPs: #{pool_ips.length}"
+      puts "  Warmup Interval: #{pool_request.warmup_interval} hours"
       
       ip_pool = ip_pools_api.create_ip_pool(pool_request)
       @created_ip_pool_id = ip_pool.id
+      @created_ip_pool_name = ip_pool.name if ip_pool.name
       
       puts '✓ IP pool created successfully!'
       puts "  ID: #{@created_ip_pool_id}"
@@ -759,7 +780,7 @@ class ESPExample
           puts "    Opens: #{stat_data.opened || 0}"
           puts "    Clicks: #{stat_data.clicked || 0}"
           puts "    Unsubscribed: #{stat_data.unsubscribed || 0}"
-          puts "    Spams: #{stat_data.spams || 0}"
+          puts "    Spam: #{stat_data.spam || 0}"
         end
       end
       
@@ -791,24 +812,27 @@ class ESPExample
     # add_domain()
     list_domains
     
-    # Step 4: Send emails
-    # send_transactional_email()
-    # send_marketing_email()
+    # Step 4: Manage IPs and IP pools (before sending emails)
+    list_ips
+    create_ip_pool
+    list_ip_pools
     
-    # Step 5: Retrieve message details
-    # get_message_details()
+    # Step 5: Send emails (using the created IP pool)
+    send_transactional_email
+    send_marketing_email
     
     # Step 6: Monitor statistics
     get_sub_account_stats
     get_aggregate_stats
     
-    # Step 7: Manage IPs and IP pools
-    list_ips
-    # create_ip_pool()
-    list_ip_pools
-    
-    # Step 8: Get account-level overview
+    # Step 7: Get account-level overview
     get_account_stats
+    
+    # Step 8: Retrieve message details (at the end to give system time to store data)
+    # Add a small delay to ensure message data is stored
+    puts "\n⏳ Waiting a few seconds for message data to be stored..."
+    sleep(3)  # Wait 3 seconds
+    get_message_details
     
     puts "\n╔═══════════════════════════════════════════════════════════════╗"
     puts '║   Workflow Complete!                                          ║'
